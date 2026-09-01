@@ -1,6 +1,6 @@
 # Vitest + Prettier Setup Cheat Sheet
 
-Use these steps from the root of a new TypeScript, JavaScript, or React project. For the LoanCrate server, prefer TypeScript filenames such as `server.test.ts`.
+Use these steps from the root of a new TypeScript, JavaScript, or React project. For a TypeScript server, prefer test filenames such as `server.test.ts`.
 
 ## 1. Install the packages
 
@@ -88,13 +88,13 @@ describe("GET /health", () => {
   });
 });
 
-describe("GET /api/loans", () => {
+describe("GET /api/items", () => {
   it("returns a successful response", async () => {
-    const response = await request(app).get("/api/loans");
+    const response = await request(app).get("/api/items");
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("loans");
-    expect(Array.isArray(response.body.loans)).toBe(true);
+    expect(response.body).toHaveProperty("items");
+    expect(Array.isArray(response.body.items)).toBe(true);
   });
 });
 '@ | Set-Content server.test.ts
@@ -140,14 +140,14 @@ npm run test:run
 Use `it.each` when the same behavior should be checked with several inputs. This keeps validation and boundary tests concise.
 
 ```typescript
-describe("GET /api/loans query validation", () => {
+describe("GET /api/items query validation", () => {
   it.each([
     ["page=0", "page must be a positive integer"],
     ["page=-1", "page must be a positive integer"],
     ["page=1.5", "page must be a positive integer"],
     ["page=abc", "page must be a positive integer"],
   ])("rejects ?%s", async (query, expectedError) => {
-    const response = await request(app).get(`/api/loans?${query}`);
+    const response = await request(app).get(`/api/items?${query}`);
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ error: expectedError });
@@ -158,20 +158,20 @@ describe("GET /api/loans query validation", () => {
 An object table is easier to read when each case has several values:
 
 ```typescript
-describe("GET /api/loans amount filters", () => {
+describe("GET /api/items price filters", () => {
   it.each([
-    { query: "minAmount=100000", expectedStatus: 200 },
-    { query: "maxAmount=500000", expectedStatus: 200 },
-    { query: "minAmount=-1", expectedStatus: 400 },
+    { query: "minPrice=10", expectedStatus: 200 },
+    { query: "maxPrice=100", expectedStatus: 200 },
+    { query: "minPrice=-1", expectedStatus: 400 },
     {
-      query: "minAmount=500000&maxAmount=100000",
+      query: "minPrice=100&maxPrice=10",
       expectedStatus: 400,
     },
   ])("returns $expectedStatus for $query", async ({
     query,
     expectedStatus,
   }) => {
-    const response = await request(app).get(`/api/loans?${query}`);
+    const response = await request(app).get(`/api/items?${query}`);
 
     expect(response.status).toBe(expectedStatus);
   });
@@ -183,13 +183,13 @@ describe("GET /api/loans amount filters", () => {
 Do not check only the status code. Verify the important fields and types without making the test unnecessarily brittle.
 
 ```typescript
-it("returns the expected loan response shape", async () => {
-  const response = await request(app).get("/api/loans");
+it("returns the expected item response shape", async () => {
+  const response = await request(app).get("/api/items");
 
   expect(response.status).toBe(200);
   expect(response.body).toEqual(
     expect.objectContaining({
-      loans: expect.any(Array),
+      items: expect.any(Array),
       totalCount: expect.any(Number),
       page: expect.any(Number),
       pageSize: expect.any(Number),
@@ -201,16 +201,16 @@ it("returns the expected loan response shape", async () => {
 Check an individual item when the endpoint returns data:
 
 ```typescript
-it("returns correctly shaped loans", async () => {
-  const response = await request(app).get("/api/loans");
-  const firstLoan: unknown = response.body.loans[0];
+it("returns correctly shaped items", async () => {
+  const response = await request(app).get("/api/items");
+  const firstItem: unknown = response.body.items[0];
 
-  expect(firstLoan).toEqual(
+  expect(firstItem).toEqual(
     expect.objectContaining({
       id: expect.any(String),
-      borrowerName: expect.any(String),
-      amount: expect.any(Number),
-      status: expect.any(String),
+      name: expect.any(String),
+      price: expect.any(Number),
+      category: expect.any(String),
     })
   );
 });
@@ -221,18 +221,18 @@ it("returns correctly shaped loans", async () => {
 Cover normalization and the intended matching behavior. Do not test typo tolerance unless fuzzy search is actually required.
 
 ```typescript
-describe("GET /api/loans search", () => {
-  it.each(["smith", "SMITH", "  smith  "])(
-    "finds a borrower using search=%j",
+describe("GET /api/items search", () => {
+  it.each(["widget", "WIDGET", "  widget  "])(
+    "finds an item using search=%j",
     async (search) => {
       const response = await request(app)
-        .get("/api/loans")
+        .get("/api/items")
         .query({ search });
 
       expect(response.status).toBe(200);
-      expect(response.body.loans).toEqual(
+      expect(response.body.items).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ borrowerName: "John Smith" }),
+          expect.objectContaining({ name: "Example Widget" }),
         ])
       );
     }
@@ -240,11 +240,11 @@ describe("GET /api/loans search", () => {
 
   it("returns an empty array when nothing matches", async () => {
     const response = await request(app)
-      .get("/api/loans")
-      .query({ search: "no-such-borrower" });
+      .get("/api/items")
+      .query({ search: "no-such-item" });
 
     expect(response.status).toBe(200);
-    expect(response.body.loans).toEqual([]);
+    expect(response.body.items).toEqual([]);
     expect(response.body.totalCount).toBe(0);
   });
 });
@@ -257,25 +257,25 @@ Using Supertest's `.query()` is safer and clearer than manually building query s
 Test boundaries and metadata, not just the happy path.
 
 ```typescript
-describe("GET /api/loans pagination", () => {
+describe("GET /api/items pagination", () => {
   it("returns the requested page size", async () => {
     const response = await request(app)
-      .get("/api/loans")
+      .get("/api/items")
       .query({ page: 1, pageSize: 2 });
 
     expect(response.status).toBe(200);
-    expect(response.body.loans.length).toBeLessThanOrEqual(2);
+    expect(response.body.items.length).toBeLessThanOrEqual(2);
     expect(response.body.page).toBe(1);
     expect(response.body.pageSize).toBe(2);
   });
 
   it("returns an empty list for a page beyond the results", async () => {
     const response = await request(app)
-      .get("/api/loans")
+      .get("/api/items")
       .query({ page: 9999, pageSize: 25 });
 
     expect(response.status).toBe(200);
-    expect(response.body.loans).toEqual([]);
+    expect(response.body.items).toEqual([]);
   });
 });
 ```
@@ -285,20 +285,20 @@ describe("GET /api/loans pagination", () => {
 Keep each test easy to scan:
 
 ```typescript
-it("filters loans by status", async () => {
+it("filters items by category", async () => {
   // Arrange
-  const status = "approved";
+  const category = "hardware";
 
   // Act
   const response = await request(app)
-    .get("/api/loans")
-    .query({ status });
+    .get("/api/items")
+    .query({ category });
 
   // Assert
   expect(response.status).toBe(200);
-  expect(response.body.loans).toEqual(
+  expect(response.body.items).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ status: "approved" }),
+      expect.objectContaining({ category: "hardware" }),
     ])
   );
 });
@@ -313,13 +313,13 @@ Use hooks when tests need known data or cleanup:
 ```typescript
 import { beforeEach, describe, expect, it } from "vitest";
 
-describe("loan routes", () => {
+describe("item routes", () => {
   beforeEach(() => {
     // Reset the in-memory store or seed known test data.
   });
 
   it("does not depend on another test running first", async () => {
-    const response = await request(app).get("/api/loans");
+    const response = await request(app).get("/api/items");
 
     expect(response.status).toBe(200);
   });
@@ -445,6 +445,6 @@ expect(result).toBe(true);
 - Commands using `Set-Content` overwrite existing files. Merge settings manually if the project already has those configuration files.
 - Use `npm test` while developing because Vitest watches for changes.
 - Use `npm run test:run` for a single test run.
-- For LoanCrate's TypeScript files, use `.test.ts` for server tests and `.test.tsx` for React component tests.
+- Use `.test.ts` for TypeScript server tests and `.test.tsx` for React component tests.
 - Keep tests close to the code (`thing.test.ts`) or place them in a dedicated `tests` directory.
 - Commit configuration files so every contributor uses the same setup.
