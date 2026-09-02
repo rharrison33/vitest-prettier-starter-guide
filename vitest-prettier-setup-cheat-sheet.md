@@ -4,14 +4,10 @@ Use these steps from the root of a new TypeScript, JavaScript, or React project.
 
 ## 1. Install the packages
 
-```powershell
-npm install --save-dev vitest prettier
-```
-
-For API tests with Express, also install Supertest:
+For a TypeScript Express server, install Vitest, Prettier, Supertest, and its type definitions together:
 
 ```powershell
-npm install --save-dev supertest @types/supertest
+npm install --save-dev vitest prettier supertest @types/supertest
 ```
 
 For React component tests, install the browser-like test environment and Testing Library:
@@ -36,7 +32,78 @@ Install the coverage provider only if you plan to run coverage:
 npm install --save-dev @vitest/coverage-v8
 ```
 
-## 3. Create a Vitest configuration
+## 3. Configure Prettier
+
+Create `.prettierrc.json` and `.prettierignore` together by pasting this entire block:
+
+```powershell
+@'
+{
+  "semi": true,
+  "singleQuote": false,
+  "tabWidth": 2,
+  "trailingComma": "es5"
+}
+'@ | Set-Content .prettierrc.json
+
+@'
+node_modules
+dist
+build
+coverage
+package-lock.json
+'@ | Set-Content .prettierignore
+```
+
+Format the project, then verify the formatting:
+
+```powershell
+npm run format
+npm run format:check
+```
+
+## 4. Enable format-on-save in VS Code
+
+Install the Prettier extension, create the VS Code settings folder, and enable format-on-save by pasting this entire block:
+
+```powershell
+code --install-extension esbenp.prettier-vscode
+New-Item -ItemType Directory -Force .vscode
+
+@'
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
+'@ | Set-Content .vscode/settings.json
+```
+
+Restart VS Code if the extension was installed for the first time. Saving JavaScript, TypeScript, JSX, TSX, or JSON files should now run Prettier automatically.
+
+## 5. Verify everything
+
+```powershell
+npm run format
+npm run test:run
+git status --short
+```
+
+## 6. Create a Vitest configuration
 
 For Node/server tests:
 
@@ -70,7 +137,7 @@ If the project uses CommonJS rather than ES modules, name the configuration `vit
 }
 ```
 
-## 4. Write a first server test
+## 7. Write a first server test
 
 Create `server.test.ts`. This example assumes the Express app is exported from `server.ts` without immediately calling `listen()`:
 
@@ -80,17 +147,22 @@ import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { app } from "./server";
 
-describe("GET /health", () => {
+const HEALTH_ENDPOINT_PATH = "/health";
+const ITEMS_ENDPOINT_PATH = "/api/items";
+
+describe(`GET ${HEALTH_ENDPOINT_PATH}`, () => {
   it("returns a successful health response", async () => {
-    const response = await request(app).get("/health");
+    const response = await request(app).get(HEALTH_ENDPOINT_PATH);
 
     expect(response.status).toBe(200);
   });
 });
 
-describe("GET /api/items", () => {
+describe(`GET ${ITEMS_ENDPOINT_PATH}`, () => {
   it("returns a successful response", async () => {
-    const response = await request(app).get("/api/items");
+    const response = await request(app)
+      .get(ITEMS_ENDPOINT_PATH)
+      .query({ page: 1, pageSize: 25 });
 
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty("items");
@@ -133,7 +205,7 @@ Run tests once, which is useful before committing or in CI:
 npm run test:run
 ```
 
-## 5. Useful server test patterns
+## 8. Useful server test patterns
 
 ### Parameterized tests with `it.each`
 
@@ -142,12 +214,12 @@ Use `it.each` when the same behavior should be checked with several inputs. This
 ```typescript
 describe("GET /api/items query validation", () => {
   it.each([
-    ["page=0", "page must be a positive integer"],
-    ["page=-1", "page must be a positive integer"],
-    ["page=1.5", "page must be a positive integer"],
-    ["page=abc", "page must be a positive integer"],
-  ])("rejects ?%s", async (query, expectedError) => {
-    const response = await request(app).get(`/api/items?${query}`);
+    [{ page: "0" }, "page must be a positive integer"],
+    [{ page: "-1" }, "page must be a positive integer"],
+    [{ page: "1.5" }, "page must be a positive integer"],
+    [{ page: "abc" }, "page must be a positive integer"],
+  ])("rejects query %j", async (query, expectedError) => {
+    const response = await request(app).get("/api/items").query(query);
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ error: expectedError });
@@ -160,21 +232,21 @@ An object table is easier to read when each case has several values:
 ```typescript
 describe("GET /api/items price filters", () => {
   it.each([
-    { query: "minPrice=10", expectedStatus: 200 },
-    { query: "maxPrice=100", expectedStatus: 200 },
-    { query: "minPrice=-1", expectedStatus: 400 },
+    { query: { minPrice: "10" }, expectedStatus: 200 },
+    { query: { maxPrice: "100" }, expectedStatus: 200 },
+    { query: { minPrice: "-1" }, expectedStatus: 400 },
     {
-      query: "minPrice=100&maxPrice=10",
+      query: { minPrice: "100", maxPrice: "10" },
       expectedStatus: 400,
     },
-  ])("returns $expectedStatus for $query", async ({
-    query,
-    expectedStatus,
-  }) => {
-    const response = await request(app).get(`/api/items?${query}`);
+  ])(
+    "returns $expectedStatus for $query",
+    async ({ query, expectedStatus }) => {
+      const response = await request(app).get("/api/items").query(query);
 
-    expect(response.status).toBe(expectedStatus);
-  });
+      expect(response.status).toBe(expectedStatus);
+    },
+  );
 });
 ```
 
@@ -193,7 +265,7 @@ it("returns the expected item response shape", async () => {
       totalCount: expect.any(Number),
       page: expect.any(Number),
       pageSize: expect.any(Number),
-    })
+    }),
   );
 });
 ```
@@ -211,7 +283,7 @@ it("returns correctly shaped items", async () => {
       name: expect.any(String),
       price: expect.any(Number),
       category: expect.any(String),
-    })
+    }),
   );
 });
 ```
@@ -225,17 +297,15 @@ describe("GET /api/items search", () => {
   it.each(["widget", "WIDGET", "  widget  "])(
     "finds an item using search=%j",
     async (search) => {
-      const response = await request(app)
-        .get("/api/items")
-        .query({ search });
+      const response = await request(app).get("/api/items").query({ search });
 
       expect(response.status).toBe(200);
       expect(response.body.items).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: "Example Widget" }),
-        ])
+        ]),
       );
-    }
+    },
   );
 
   it("returns an empty array when nothing matches", async () => {
@@ -290,16 +360,12 @@ it("filters items by category", async () => {
   const category = "hardware";
 
   // Act
-  const response = await request(app)
-    .get("/api/items")
-    .query({ category });
+  const response = await request(app).get("/api/items").query({ category });
 
   // Assert
   expect(response.status).toBe(200);
   expect(response.body.items).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ category: "hardware" }),
-    ])
+    expect.arrayContaining([expect.objectContaining({ category: "hardware" })]),
   );
 });
 ```
@@ -336,88 +402,6 @@ Good tests should:
 - Prefer observable behavior over internal implementation details.
 - Check exact values when they matter and flexible shapes when incidental values may change.
 - Avoid snapshots for simple API responses; focused assertions explain failures better.
-
-## 6. Configure Prettier
-
-Create `.prettierrc.json`:
-
-```powershell
-@'
-{
-  "semi": true,
-  "singleQuote": false,
-  "tabWidth": 2,
-  "trailingComma": "es5"
-}
-'@ | Set-Content .prettierrc.json
-```
-
-Create `.prettierignore`:
-
-```powershell
-@'
-node_modules
-dist
-build
-coverage
-package-lock.json
-'@ | Set-Content .prettierignore
-```
-
-Format the project:
-
-```powershell
-npm run format
-```
-
-Check formatting without changing files:
-
-```powershell
-npm run format:check
-```
-
-## 7. Enable format-on-save in VS Code
-
-Install the Prettier extension:
-
-```powershell
-code --install-extension esbenp.prettier-vscode
-New-Item -ItemType Directory -Force .vscode
-```
-
-Create `.vscode/settings.json`:
-
-```powershell
-@'
-{
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.formatOnSave": true,
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[javascriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[json]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
-}
-'@ | Set-Content .vscode/settings.json
-```
-
-## 8. Verify everything
-
-```powershell
-npm run format
-npm run test:run
-git status --short
-```
 
 ## Common Vitest matchers
 
