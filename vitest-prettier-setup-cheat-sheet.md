@@ -11,7 +11,7 @@ npm install --save-dev vitest prettier
 For API tests with Express, also install Supertest:
 
 ```powershell
-npm install --save-dev supertest
+npm install --save-dev supertest @types/supertest
 ```
 
 For React component tests, install the browser-like test environment and Testing Library:
