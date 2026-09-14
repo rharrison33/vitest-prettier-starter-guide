@@ -394,6 +394,39 @@ function Find-ReactClient {
     return $null
 }
 
+function Initialize-ViteClientTypes {
+    param([Parameter(Mandatory)][string] $ProjectDirectory)
+
+    $packagePath = Join-Path $ProjectDirectory 'package.json'
+    if (-not (Test-Path -LiteralPath $packagePath)) { return }
+    try {
+        $packageJson = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+    } catch {
+        Write-Warning "Could not inspect $packagePath for Vite dependencies."
+        return
+    }
+    $dependencies = @($packageJson.dependencies.PSObject.Properties.Name) +
+        @($packageJson.devDependencies.PSObject.Properties.Name)
+    if ('vite' -notin $dependencies) { return }
+
+    $sourceDirectory = Join-Path $ProjectDirectory 'src'
+    $rootDeclaration = Join-Path $ProjectDirectory 'vite-env.d.ts'
+    $sourceDeclaration = Join-Path $sourceDirectory 'vite-env.d.ts'
+    # Preserve existing declarations, including custom content, even with -Force.
+    if ((Test-Path -LiteralPath $rootDeclaration) -or (Test-Path -LiteralPath $sourceDeclaration)) { return }
+    $declaration = if (Test-Path -LiteralPath $sourceDirectory -PathType Container) {
+        $sourceDeclaration
+    } else {
+        $rootDeclaration
+    }
+    Set-Content -LiteralPath $declaration -Value '/// <reference types="vite/client" />' -Encoding utf8
+    Write-Host "Created Vite client types: $declaration" -ForegroundColor Green
+}
+
+foreach ($directory in @('client', 'frontend', 'web', '.')) {
+    Initialize-ViteClientTypes -ProjectDirectory $directory
+}
+
 $reactClientDirectory = Find-ReactClient
 $reactDebugConfiguration = ''
 $debugCompound = ''
